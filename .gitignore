@@ -1,0 +1,4 @@
+/target
+/.embuild
+/.cargo/target
+.env
