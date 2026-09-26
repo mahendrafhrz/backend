@@ -23,7 +23,7 @@ const MAX_RETRIES: u8 = 3;
 const DHT22_GPIO: i32 = 18;
 const MQTT_URL: &str = match option_env!("MQTT_URL") {
     Some(value) => value,
-    None => "mqtt://broker.emqx.io:1883",
+    None => "mqtts://fb113b25.ala.asia-southeast1.emqxsl.com:8883",
 };
 const MQTT_TOPIC: &str = match option_env!("MQTT_TOPIC") {
     Some(value) => value,
@@ -187,14 +187,21 @@ fn send_with_retries(client: &mut EspMqttClient<'_>, measurement: &Measurement) 
 }
 
 fn start_mqtt_client() -> Result<(EspMqttClient<'static>, EspMqttConnection)> {
+    // MQTT credentials for EMQX Cloud authentication
+    let mqtt_username = option_env!("MQTT_USERNAME").unwrap_or("enose_device");
+    let mqtt_password = option_env!("MQTT_PASSWORD").unwrap_or("11223344");
+    
     let (client, connection) = EspMqttClient::new(
         MQTT_URL,
         &MqttClientConfiguration {
             client_id: Some(DEVICE_ID),
+            username: Some(mqtt_username),
+            password: Some(mqtt_password),
             ..Default::default()
         },
     )
     .context("create MQTT client")?;
+    info!("MQTT connecting with username: {}", mqtt_username);
     Ok((client, connection))
 }
 
