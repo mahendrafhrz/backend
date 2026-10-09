@@ -1,0 +1,7 @@
+target
+.git
+.gitignore
+.env
+*.db
+Raw Data Kopi Rafi
+server-*.log

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>E-Nose Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1e293b 100%);
+      background-attachment: fixed;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      padding: 2rem 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .logo {
+      padding: 0 2rem 2rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .nav-item {
+      padding: 0.875rem 2rem;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+    }
+
+    .nav-item.active {
+      background: rgba(22, 163, 74, 0.1);
+      color: #22c55e;
+      border-left-color: #22c55e;
+    }
+
+    /* Main Content */
+    .main {
+      padding: 2rem;
+      max-width: 1400px;
+    }
+
+    .header {
+      margin-bottom: 2rem;
+    }
+
+    .header h1 {
+      font-size: 1.875rem;
+      margin-bottom: 0.5rem;
+      color: #ffffff;
+    }
+
+    .header p {
+      color: #94a3b8;
+    }
+
+    /* Stats Grid */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .stat-label {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+      text-transform: capitalize;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+      color: #22c55e;
+    }
+
+    .stat-change {
+      font-size: 0.875rem;
+      color: #cbd5e1;
+      text-transform: capitalize;
+    }
+
+    /* Charts Grid */
+    .charts {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .chart-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .chart-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: #ffffff;
+      text-transform: capitalize;
+    }
+
+    .chart-container {
+      height: 300px;
+      position: relative;
+    }
+
+    /* Table */
+    .table-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      margin-bottom: 2rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #94a3b8;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+      text-transform: capitalize;
+    }
+
+    td {
+      padding: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .badge-success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .badge-danger {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    /* Button */
+    .btn {
+      padding: 0.625rem 1.25rem;
+      border-radius: 8px;
+      border: none;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #22c55e;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #16a34a;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* OTA Upload */
+    .upload-section {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      padding: 2rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    .upload-area {
+      border: 2px dashed rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 2rem;
+      margin: 1rem 0;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    input[type="file"],
+    input[type="text"] {
+      padding: 0.625rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      width: 100%;
+      max-width: 400px;
+      margin: 0.5rem auto;
+      display: block;
+      background: rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+    }
+    
+    input[type="file"]::file-selector-button {
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid #22c55e;
+      color: #22c55e;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 1rem;
+    }
+    
+    input[type="text"]::placeholder {
+      color: #64748b;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">E-Nose</div>
+      <nav>
+        <div class="nav-item active" onclick="showTab('dashboard')">Dashboard</div>
+        <div class="nav-item" onclick="showTab('data')">Data Management</div>
+        <div class="nav-item" onclick="showTab('ota')">OTA Update</div>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Dashboard Tab -->
+      <div id="tab-dashboard">
+        <div class="header">
+          <h1>Dashboard</h1>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-secondary" onclick="refreshData()">Refresh</button>
+          <button class="btn btn-primary" onclick="downloadPDF()">Download Report</button>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Total Samples</div>
+            <div class="stat-value" id="totalSamples">0</div>
+            <div class="stat-change">Measurements Received</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Classes Detected</div>
+            <div class="stat-value" id="classesDetected">0</div>
+            <div class="stat-change">High: <span id="highCount">0</span> | Low: <span id="lowCount">0</span></div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Average Confidence</div>
+            <div class="stat-value" id="avgConfidence">0%</div>
+            <div class="stat-change">Model Certainty</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Accuracy</div>
+            <div class="stat-value" id="accuracy">0%</div>
+            <div class="stat-change">Prediction Accuracy</div>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts">
+          <div class="chart-card">
+            <div class="chart-header">
+              <h2 class="chart-title">Confidence Trend</h2>
+            </div>
+            <div class="chart-container">
+              <canvas id="confidenceChart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h2 class="chart-title">Class Distribution</h2>
+            </div>
+            <div class="chart-container">
+              <canvas id="classChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Measurements -->
+        <div class="table-card">
+          <h2 class="chart-title" style="margin-bottom: 1rem;">Recent Measurements</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Device</th>
+                <th>Sample ID</th>
+                <th>Confidence</th>
+                <th>Accuracy</th>
+                <th>Class</th>
+              </tr>
+            </thead>
+            <tbody id="measurementsTable">
+              <tr>
+                <td colspan="6" style="text-align: center; color: #64748b;">Loading Data...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Data Management Tab -->
+      <div id="tab-data" style="display: none;">
+        <div class="header">
+          <h1>Data Management</h1>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-secondary" onclick="refreshData()">Refresh</button>
+          <button class="btn btn-primary" style="background: #dc2626;" onclick="deleteAllData()">Delete All</button>
+        </div>
+
+        <div class="table-card">
+          <input type="text" id="searchInput" placeholder="Search By Device ID Or Class..." style="margin-bottom: 1rem; max-width: 100%;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Device</th>
+                <th>Sample ID</th>
+                <th>Coffee Type</th>
+                <th>Confidence</th>
+                <th>Accuracy</th>
+                <th>Grade</th>
+                <th>Time</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="dataTable">
+              <tr>
+                <td colspan="8" style="text-align: center; color: #64748b;">Loading Data...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- OTA Update Tab -->
+      <div id="tab-ota" style="display: none;">
+        <div class="header">
+          <h1>OTA Firmware Update</h1>
+        </div>
+
+        <div class="upload-section">
+          <h2 style="margin-bottom: 1rem; color: #ffffff;">Upload Firmware</h2>
+          <div class="upload-area">
+            <p style="color: #94a3b8; margin-bottom: 1rem;">Select Firmware Binary File (.bin)</p>
+            <input type="file" id="firmwareFile" accept=".bin">
+            <input type="text" id="firmwareVersion" placeholder="Version (e.g., 1.2.3)">
+          </div>
+          <button class="btn btn-primary" onclick="uploadFirmware()">Upload Firmware</button>
+          <div id="uploadStatus" style="margin-top: 1rem; color: #94a3b8;"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let confidenceChart, classChart;
+    let allMeasurements = [];
+
+    // Initialize charts
+    function initCharts() {
+      const ctxConfidence = document.getElementById('confidenceChart').getContext('2d');
+      confidenceChart = new Chart(ctxConfidence, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Confidence',
+            data: [],
+            borderColor: '#16a34a',
+            backgroundColor: 'rgba(22, 163, 74, 0.1)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                callback: value => value + '%'
+              }
+            }
+          }
+        }
+      });
+
+      const ctxClass = document.getElementById('classChart').getContext('2d');
+      classChart = new Chart(ctxClass, {
+        type: 'doughnut',
+        data: {
+          labels: ['High Grade', 'Low Grade'],
+          datasets: [{
+            data: [0, 0],
+            backgroundColor: ['#16a34a', '#dc2626'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    // Fetch data
+    async function fetchData() {
+      try {
+        const response = await fetch('/api/v1/measurements?limit=50');
+        const data = await response.json();
+        allMeasurements = data || [];
+        updateDashboard(allMeasurements);
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    }
+
+    // Update dashboard
+    function updateDashboard(measurements) {
+      document.getElementById('totalSamples').textContent = measurements.length;
+
+      // Count grade field langsung
+      const highCount = measurements.filter(m => m.grade === 'high_grade').length;
+      const lowCount = measurements.filter(m => m.grade === 'low_grade').length;
+      
+      // Classes Detected = jumlah grade yang ada (0 jika belum ada data)
+      const uniqueGrades = new Set(measurements.map(m => m.grade).filter(g => g));
+      document.getElementById('classesDetected').textContent = uniqueGrades.size;
+      document.getElementById('highCount').textContent = highCount;
+      document.getElementById('lowCount').textContent = lowCount;
+
+      // Average Confidence dari field confidence (fallback ke score jika belum ada)
+      const avgConf = measurements.length > 0
+        ? measurements.reduce((sum, m) => sum + (m.confidence || m.score || 0), 0) / measurements.length
+        : 0;
+      document.getElementById('avgConfidence').textContent = (avgConf * 100).toFixed(1) + '%';
+      
+      const avgAcc = measurements.length > 0
+        ? measurements.reduce((sum, m) => sum + (m.accuracy || 0), 0) / measurements.length
+        : 0;
+      document.getElementById('accuracy').textContent = avgAcc.toFixed(1) + '%';
+
+      // Update charts
+      const last20 = measurements.slice(0, 20).reverse();
+      confidenceChart.data.labels = last20.map((_, i) => i + 1);
+      confidenceChart.data.datasets[0].data = last20.map(m => (m.confidence || m.score || 0) * 100);
+      confidenceChart.update();
+
+      classChart.data.datasets[0].data = [highCount, lowCount];
+      classChart.update();
+
+      // Update table
+      updateTable(measurements);
+    }
+
+    // Update table
+    function updateTable(measurements) {
+      const tbody = document.getElementById('measurementsTable');
+      tbody.innerHTML = '';
+
+      if (measurements.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b;">No Data Available</td></tr>';
+        return;
+      }
+
+      measurements.slice(0, 10).forEach(m => {
+        const row = tbody.insertRow();
+        // Pakai field grade langsung dari API
+        const grade = m.grade || 'unknown';
+        const className = grade === 'high_grade' ? 'High Grade' : grade === 'low_grade' ? 'Low Grade' : 'Unknown';
+        const badgeClass = grade === 'high_grade' ? 'badge-success' : 'badge-danger';
+        
+        row.innerHTML = `
+          <td>${new Date(m.timestamp || m.captured_at).toLocaleTimeString()}</td>
+          <td>${m.device_id || 'N/A'}</td>
+          <td><strong>${m.sample_id}</strong></td>
+          <td><strong>${((m.confidence || m.score || 0) * 100).toFixed(1)}%</strong></td>
+          <td><strong>${(m.accuracy || 0).toFixed(1)}%</strong></td>
+          <td><span class="badge ${badgeClass}">${className}</span></td>
+        `;
+      });
+    }
+
+    // Update data table
+    function updateDataTable(measurements) {
+      const tbody = document.getElementById('dataTable');
+      tbody.innerHTML = '';
+
+      if (measurements.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #64748b;">No Data</td></tr>';
+        return;
+      }
+
+      measurements.forEach(m => {
+        const row = tbody.insertRow();
+        // Pakai field grade langsung
+        const grade = m.grade || 'unknown';
+        const className = grade === 'high_grade' ? 'High' : grade === 'low_grade' ? 'Low' : 'Unknown';
+        const badgeClass = grade === 'high_grade' ? 'badge-success' : 'badge-danger';
+        
+        row.innerHTML = `
+          <td>${m.id ? m.id.substring(0, 8) : 'N/A'}</td>
+          <td>${m.device_id || 'N/A'}</td>
+          <td><strong>${m.sample_id}</strong></td>
+          <td><strong>${m.predicted_class || 'Unknown'}</strong></td>
+          <td>${((m.confidence || m.score || 0) * 100).toFixed(1)}%</td>
+          <td>${(m.accuracy || 0).toFixed(1)}%</td>
+          <td><span class="badge ${badgeClass}">${className}</span></td>
+          <td>${new Date(m.timestamp || m.captured_at).toLocaleString()}</td>
+          <td><button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;" onclick="deleteRecord('${m.id}')">Delete</button></td>
+        `;
+      });
+    }
+
+    // Tab switching
+    function showTab(tabName) {
+      document.querySelectorAll('[id^="tab-"]').forEach(tab => tab.style.display = 'none');
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      
+      document.getElementById('tab-' + tabName).style.display = 'block';
+      event.target.classList.add('active');
+
+      if (tabName === 'data') {
+        updateDataTable(allMeasurements);
+      }
+    }
+
+    // Search
+    document.addEventListener('DOMContentLoaded', () => {
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          const query = e.target.value.toLowerCase();
+          const filtered = allMeasurements.filter(m =>
+            (m.device_id || '').toLowerCase().includes(query) ||
+            (m.predicted_class || '').toLowerCase().includes(query) ||
+            (m.id || '').toLowerCase().includes(query)
+          );
+          updateDataTable(filtered);
+        });
+      }
+    });
+
+    // Functions
+    function refreshData() {
+      fetchData();
+    }
+
+    function downloadPDF() {
+      window.location.href = '/api/v1/reports/analytics.pdf';
+    }
+
+    async function deleteRecord(id) {
+      if (!confirm('Delete This Record?')) return;
+      try {
+        await fetch(`/api/v1/measurements/${id}`, { method: 'DELETE' });
+        fetchData();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function deleteAllData() {
+      if (!confirm('Delete ALL Data? This Cannot Be Undone!')) return;
+      try {
+        const measurements = allMeasurements;
+        for (const m of measurements) {
+          await fetch(`/api/v1/measurements/${m.id}`, { method: 'DELETE' });
+        }
+        alert('All Data Deleted');
+        fetchData();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function uploadFirmware() {
+      const file = document.getElementById('firmwareFile').files[0];
+      const version = document.getElementById('firmwareVersion').value;
+
+      if (!file || !version) {
+        alert('Please Select File And Enter Version');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('firmware', file);
+      formData.append('version', version);
+
+      document.getElementById('uploadStatus').textContent = 'Uploading...';
+
+      try {
+        const response = await fetch('/api/v1/firmware/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          document.getElementById('uploadStatus').textContent = 'Upload Successful!';
+          document.getElementById('firmwareFile').value = '';
+          document.getElementById('firmwareVersion').value = '';
+        } else {
+          throw new Error('Upload Failed');
+        }
+      } catch (error) {
+        document.getElementById('uploadStatus').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      initCharts();
+      fetchData();
+      setInterval(fetchData, 5000);
+    });
+  </script>
+</body>
+</html>
+
