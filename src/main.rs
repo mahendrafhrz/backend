@@ -983,9 +983,6 @@ async fn upload_firmware(
             "complete": format!("enose/{}/ota/complete", env("DEVICE_ID", "ESP32-001")),
         }
     })))
-}te", env("DEVICE_ID", "ESP32-001")),
-        }
-    })))
 }
 
 // OTA Firmware Download Handler
