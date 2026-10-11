@@ -67,12 +67,39 @@ struct AnalyticsSummary {
     by_sample: Vec<SampleSummary>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ota_chunk_payload_is_aligned_to_4_bytes() {
+        let chunk = [0xAA, 0xBB, 0xCC];
+        let payload = align_ota_chunk_for_flash(7, &chunk);
+
+        assert_eq!(payload.len() % 4, 0);
+        assert_eq!(payload[0..2], 7u16.to_be_bytes());
+        assert_eq!(&payload[2..5], &[0xAA, 0xBB, 0xCC]);
+    }
+}
+
 #[derive(Debug, Serialize, FromRow)]
 struct SampleSummary {
     sample_id: i32,
     measurement_count: i64,
     average_score: f32,
     average_accuracy: f32,
+}
+
+fn align_ota_chunk_for_flash(chunk_id: usize, chunk_data: &[u8]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(2 + chunk_data.len() + 4);
+    payload.extend_from_slice(&(chunk_id as u16).to_be_bytes());
+    payload.extend_from_slice(chunk_data);
+
+    while payload.len() % 4 != 0 {
+        payload.push(0xFF);
+    }
+
+    payload
 }
 
 #[tokio::main]
@@ -634,7 +661,7 @@ async fn mqtt_worker(state: AppState) {
     loop {
         info!("MQTT: Initializing connection...");
         
-        let broker = env("MQTT_BROKER", "test.mosquitto.org");
+        let broker = env("MQTT_BROKER", "localhost");
         let port = env("MQTT_PORT", "1883").parse().unwrap_or(1883);
         let username = env::var("MQTT_USERNAME").ok();
         let password = env::var("MQTT_PASSWORD").ok();
@@ -871,20 +898,45 @@ async fn upload_firmware(
     let response_size = firmware_data.len();
     let response_checksum = checksum.clone();
 
-    // Publish OTA update via MQTT with 1KB chunks (NO HTTP!)
+    // Publish OTA update via MQTT with 1KB chunks + ACK mechanism
     tokio::spawn(async move {
         let broker = env("MQTT_BROKER", "test.mosquitto.org");
         let port = env("MQTT_PORT", "1883").parse().unwrap_or(1883);
         let device_id = env("DEVICE_ID", "ESP32-001");
+        let chunk_delay_ms = env("OTA_CHUNK_DELAY_MS", "500").parse().unwrap_or(500);
+        let ack_timeout_secs = env("OTA_ACK_TIMEOUT_SECS", "10").parse().unwrap_or(10);
+        let max_retries = env("OTA_MAX_RETRIES", "3").parse().unwrap_or(3);
         
         let mut options = MqttOptions::new("enose-ota-publisher", broker.clone(), port);
-        options.set_keep_alive(Duration::from_secs(60));
+        options.set_keep_alive(Duration::from_secs(120));
         
-        let (client, mut event_loop) = AsyncClient::new(options, 10);
+        let (client, mut event_loop) = AsyncClient::new(options, 50);
+        
+        // Subscribe to ACK topic
+        let ack_topic = format!("enose/{}/ota/ack", device_id);
+        if let Err(e) = client.subscribe(&ack_topic, QoS::AtLeastOnce).await {
+            error!(?e, "Failed to subscribe to ACK topic");
+            return;
+        }
+        
+        // Spawn event loop handler to receive ACKs
+        let (ack_tx, mut ack_rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
         tokio::spawn(async move {
             loop {
-                if event_loop.poll().await.is_err() {
-                    break;
+                match event_loop.poll().await {
+                    Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(msg))) => {
+                        // Parse ACK: {"chunk_id": 123}
+                        if let Ok(ack_data) = serde_json::from_slice::<serde_json::Value>(&msg.payload) {
+                            if let Some(chunk_id) = ack_data.get("chunk_id").and_then(|v| v.as_u64()) {
+                                let _ = ack_tx.send(chunk_id as usize);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(?e, "MQTT event loop error");
+                        break;
+                    }
+                    _ => {}
                 }
             }
         });
@@ -899,7 +951,9 @@ async fn upload_firmware(
             version = %version,
             size = firmware_data.len(),
             chunks = total_chunks,
-            "Starting OTA via MQTT chunks"
+            chunk_delay_ms = chunk_delay_ms,
+            ack_timeout_secs = ack_timeout_secs,
+            "Starting OTA via MQTT chunks with ACK mechanism"
         );
         
         // 1. Send OTA START message
@@ -910,6 +964,7 @@ async fn upload_firmware(
             "total_chunks": total_chunks,
             "chunk_size": CHUNK_SIZE,
             "checksum": checksum,
+            "ack_enabled": true,
             "timestamp": Utc::now().to_rfc3339(),
         });
         
@@ -923,32 +978,62 @@ async fn upload_firmware(
             return;
         }
         
-        info!(%start_topic, "OTA START sent");
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        info!(%start_topic, "OTA START sent (ACK mode enabled)");
+        tokio::time::sleep(Duration::from_millis(500)).await;
         
-        // 2. Send firmware chunks
+        // 2. Send firmware chunks with ACK wait
         let chunk_topic = format!("enose/{}/ota/chunk", device_id);
         for (chunk_id, chunk_data) in firmware_data.chunks(CHUNK_SIZE).enumerate() {
-            // Format: [chunk_id: 2 bytes][data: up to 1024 bytes]
-            let mut payload = Vec::with_capacity(2 + chunk_data.len());
-            payload.extend_from_slice(&(chunk_id as u16).to_be_bytes());
-            payload.extend_from_slice(chunk_data);
+            let mut retry_count = 0;
+            let mut ack_received = false;
             
-            if let Err(e) = client.publish(&chunk_topic, QoS::AtLeastOnce, false, payload).await {
-                error!(?e, chunk_id, "Failed to publish chunk");
+            while !ack_received && retry_count <= max_retries {
+                // Format: [chunk_id: 2 bytes][data: up to 1024 bytes][padding to 4-byte boundary]
+                let payload = align_ota_chunk_for_flash(chunk_id, chunk_data);
+
+                if let Err(e) = client.publish(&chunk_topic, QoS::AtLeastOnce, false, payload).await {
+                    error!(?e, chunk_id, retry_count, "Failed to publish chunk");
+                    retry_count += 1;
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+
+                // Wait for ACK with timeout
+                match tokio::time::timeout(
+                    Duration::from_secs(ack_timeout_secs),
+                    ack_rx.recv()
+                ).await {
+                    Ok(Some(acked_chunk_id)) if acked_chunk_id == chunk_id => {
+                        ack_received = true;
+                        if chunk_id % 10 == 0 {
+                            info!(chunk_id, total_chunks, "OTA chunk ACKed");
+                        }
+                    }
+                    Ok(Some(other_id)) => {
+                        warn!(chunk_id, received_id = other_id, "Received ACK for wrong chunk");
+                    }
+                    Ok(None) => {
+                        warn!(chunk_id, "ACK channel closed");
+                        return;
+                    }
+                    Err(_) => {
+                        retry_count += 1;
+                        warn!(chunk_id, retry_count, max_retries, "ACK timeout, retrying...");
+                    }
+                }
+            }
+            
+            if !ack_received {
+                error!(chunk_id, "Failed to receive ACK after {} retries, aborting OTA", max_retries);
                 return;
             }
-            
-            if chunk_id % 10 == 0 {
-                info!(chunk_id, total_chunks, "OTA chunk progress");
-            }
-            
-            // Small delay between chunks to prevent flooding
-            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            // Configurable delay between chunks
+            tokio::time::sleep(Duration::from_millis(chunk_delay_ms)).await;
         }
         
-        info!("All OTA chunks sent");
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        info!("All OTA chunks sent and ACKed successfully!");
+        tokio::time::sleep(Duration::from_millis(500)).await;
         
         // 3. Send OTA COMPLETE message
         let complete_topic = format!("enose/{}/ota/complete", device_id);
@@ -968,12 +1053,12 @@ async fn upload_firmware(
             return;
         }
         
-        info!(%complete_topic, "OTA COMPLETE sent - firmware published via MQTT!");
+        info!(%complete_topic, "OTA COMPLETE sent - firmware published via MQTT with ACK!");
     });
 
     Ok(Json(serde_json::json!({
         "success": true,
-        "message": "Firmware uploaded and OTA started via MQTT",
+        "message": "Firmware uploaded and OTA started via MQTT with ACK mechanism",
         "version": response_version,
         "size": response_size,
         "checksum": response_checksum,
@@ -981,6 +1066,12 @@ async fn upload_firmware(
             "start": format!("enose/{}/ota/start", env("DEVICE_ID", "ESP32-001")),
             "chunk": format!("enose/{}/ota/chunk", env("DEVICE_ID", "ESP32-001")),
             "complete": format!("enose/{}/ota/complete", env("DEVICE_ID", "ESP32-001")),
+            "ack": format!("enose/{}/ota/ack", env("DEVICE_ID", "ESP32-001")),
+        },
+        "config": {
+            "chunk_delay_ms": env("OTA_CHUNK_DELAY_MS", "500"),
+            "ack_timeout_secs": env("OTA_ACK_TIMEOUT_SECS", "10"),
+            "max_retries": env("OTA_MAX_RETRIES", "3"),
         }
     })))
 }
@@ -993,7 +1084,7 @@ async fn download_firmware(
     let filepath = std::path::Path::new("./firmware").join(&filename);
 
     if !filepath.exists() {
-        return Err(ApiError::NotFound);
+        return Err(ApiError::BadRequest(format!("Firmware version {} not found", version)));
     }
 
     let data = tokio::fs::read(&filepath).await.map_err(|e| {
@@ -1009,7 +1100,7 @@ async fn download_firmware(
     );
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename={}", filename))
+        HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
     );
 
