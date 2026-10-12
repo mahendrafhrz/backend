@@ -900,7 +900,7 @@ async fn upload_firmware(
 
     // Publish OTA update via MQTT with 1KB chunks + ACK mechanism
     tokio::spawn(async move {
-        let broker = env("MQTT_BROKER", "test.mosquitto.org");
+        let broker = env("MQTT_BROKER", "broker.hivemq.com");
         let port = env("MQTT_PORT", "1883").parse().unwrap_or(1883);
         let device_id = env("DEVICE_ID", "ESP32-001");
         let chunk_delay_ms = env("OTA_CHUNK_DELAY_MS", "500").parse().unwrap_or(500);
