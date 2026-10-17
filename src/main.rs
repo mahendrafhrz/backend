@@ -325,15 +325,35 @@ async fn summary(State(state): State<Arc<AppState>>) -> Result<Json<AnalyticsSum
 }
 
 async fn analytics_pdf(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
-    // Fetch all measurements with grade field
+    // Fetch measurements with grade field (limit to recent 20 for PDF performance)
     let all_measurements = sqlx::query_as::<_, Measurement>(
         "SELECT id, sample_id, score, accuracy, predicted_class, confidence, grade, source, device_id, features_json, captured_at, created_at
-         FROM measurements ORDER BY captured_at DESC"
+         FROM measurements ORDER BY captured_at DESC LIMIT 20"
     )
     .fetch_all(&state.pool)
     .await?;
     
-    let summary = summary(State(state)).await?.0;
+    // Calculate summary from fetched measurements only (no additional query)
+    let total_measurements = all_measurements.len() as i64;
+    let average_score = if !all_measurements.is_empty() {
+        all_measurements.iter().map(|m| m.score as f32).sum::<f32>() / total_measurements as f32
+    } else {
+        0.0f32
+    };
+    let average_accuracy = if !all_measurements.is_empty() {
+        all_measurements.iter().map(|m| m.accuracy as f32).sum::<f32>() / total_measurements as f32
+    } else {
+        0.0f32
+    };
+    
+    let summary = AnalyticsSummary {
+        total_measurements,
+        sample_count: 0,
+        average_score,
+        average_accuracy,
+        latest_captured_at: None,
+        by_sample: Vec::new(),
+    };
     let (document, page, layer) = PdfDocument::new(
         "E-Nose Dashboard Report",
         Mm(210.0),
